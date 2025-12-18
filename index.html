@@ -158,13 +158,13 @@
 
         .clip-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .clip-title { color: var(--text); font-weight: 700; font-size: 15px; }
-        .clip-btn.delete { background: rgba(255,77,77,0.1); color: #ff6b6b; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; }
+        .clip-btn.delete { background: rgba(255,77,77,0.1); color: #ff6b6b; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
 
         .clip-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .time-input label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
         .time-input input {
             background: rgba(10,10,20,0.6); border: 1px solid var(--border); color: var(--text);
-            padding: 8px; border-radius: 6px; font-family: 'Roboto Mono'; font-size: 13px;
+            padding: 8px; border-radius: 6px; font-family: 'Roboto Mono'; font-size: 13px; width: 100%;
         }
         .clip-duration { color: var(--text-dim); font-size: 12px; margin-top: 6px; }
 
@@ -175,8 +175,21 @@
         .screenshot-checkbox label { color: var(--text); font-size: 14px; cursor: pointer; }
         .screenshot-info { color: var(--text-dim); font-size: 12px; margin-left: 28px; }
 
+        /* Encoding Options */
+        .encoding-options { margin-bottom: 20px; padding: 16px; background: var(--glass); border-radius: 10px; border: 1px solid var(--border); }
+        .encoding-header { color: var(--accent); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
+        .encoding-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+        .encoding-btn {
+            background: rgba(10,10,20,0.6); color: var(--text-dim); border: 1px solid var(--border);
+            padding: 10px 16px; border-radius: 8px; font-size: 13px; cursor: pointer;
+            transition: all 0.3s; backdrop-filter: blur(4px);
+        }
+        .encoding-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .encoding-btn.selected { background: rgba(0,242,255,0.15); border-color: var(--accent); color: var(--accent); }
+        .encoding-note { color: var(--text-dim); font-size: 11px; margin-top: 10px; font-style: italic; }
+
         .export-buttons { display: flex; gap: 16px; margin: 20px 0; }
-        .export-btn { flex: 1; background: linear-gradient(135deg, rgba(0,242ínas,0.2), rgba(0,170,255,0.2)); }
+        .export-btn { flex: 1; background: linear-gradient(135deg, rgba(0,242,255,0.2), rgba(0,170,255,0.2)); }
         .reset-btn { flex: 1; }
 
         .ffmpeg-commands { display: none; }
@@ -191,7 +204,7 @@
         }
         .copy-btn {
             background: var(--glass); color: var(--accent); padding: 10px 16px; border-radius: 8px;
-            font-size: 13px; border: 1px solid var(--border); backdrop-filter: blur(8px);
+            font-size: 13px; border: 1px solid var(--border); backdrop-filter: blur(8px); cursor: pointer;
         }
         .copy-btn.copied { background: rgba(0,255,136,0.2); color: #00ff88; }
 
@@ -213,6 +226,10 @@
             resize: vertical; margin-bottom: 20px;
         }
         .bulk-import-textarea:focus { border-color: var(--accent); outline: none; }
+        .bulk-import-cancel, .bulk-import-submit {
+            background: var(--glass); color: var(--accent); border: 1px solid var(--border);
+            padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px;
+        }
 
         .notification {
             position: fixed; top: 20px; right: 20px; background: rgba(0,255,136,0.15); color: #00ff88;
@@ -293,6 +310,17 @@
                     </div>
                     <div class="screenshot-info">Generates .png at start of each clip</div>
                 </div>
+
+                <!-- Encoding Mode Selection -->
+                <div class="encoding-options">
+                    <div class="encoding-header">Encoding Mode</div>
+                    <div class="encoding-buttons">
+                        <button class="encoding-btn selected" data-mode="reencode" title="Re-encodes video for frame-accurate cuts (recommended)">Re-encode (Clean Cuts)</button>
+                        <button class="encoding-btn" data-mode="copy" title="Fast but may have frozen frames at start">Stream Copy (Fast)</button>
+                    </div>
+                    <div class="encoding-note" id="encodingNote">Re-encode ensures clips start on exact frames with no frozen video. Slightly slower but recommended.</div>
+                </div>
+
                 <div class="export-buttons">
                     <button class="export-btn" id="exportBtn">Generate Command</button>
                     <button class="reset-btn" id="resetBtn">Clear All</button>
@@ -317,12 +345,11 @@
         </div>
 
         <div class="footer">
-            Engineered by whoistheMETRO • Neural upgrade by <a href="#" target="_blank">Grok</a>
+            Engineered by whoistheMETRO • Neural upgrade by Claude
         </div>
     </div>
 
     <script>
-        // [Same JS logic as before — unchanged for functionality]
         document.addEventListener('DOMContentLoaded', function() {
             const video = document.getElementById('video');
             const videoContainer = document.getElementById('videoContainer');
@@ -344,6 +371,8 @@
             const resetBtn = document.getElementById('resetBtn');
             const ffmpegCommands = document.getElementById('ffmpegCommands');
             const screenshotCheckbox = document.getElementById('screenshotCheckbox');
+            const encodingBtns = document.querySelectorAll('.encoding-btn');
+            const encodingNote = document.getElementById('encodingNote');
 
             let clips = [];
             let clipIdCounter = 0;
@@ -351,6 +380,7 @@
             let audioFormat = 'mp3';
             let captureScreenshot = false;
             let videoDuration = 0;
+            let encodingMode = 'reencode'; // Default to re-encode for clean cuts
 
             savePathBtn.addEventListener('click', () => {
                 let path = filePathInput.value.trim();
@@ -381,6 +411,21 @@
                     audioBtns.forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     audioFormat = btn.dataset.audio;
+                });
+            });
+
+            // Encoding mode selection
+            encodingBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    encodingBtns.forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    encodingMode = btn.dataset.mode;
+                    
+                    if (encodingMode === 'reencode') {
+                        encodingNote.textContent = 'Re-encode ensures clips start on exact frames with no frozen video. Slightly slower but recommended.';
+                    } else {
+                        encodingNote.textContent = '⚠️ Stream copy is fast but clips may have frozen frames at the start if cuts don\'t land on keyframes.';
+                    }
                 });
             });
 
@@ -499,9 +544,9 @@
             function generateFFmpegCommands() {
                 const dir = videoFilePath.includes('/') ? videoFilePath.substring(0, videoFilePath.lastIndexOf('/') + 1) :
                             videoFilePath.includes('\\') ? videoFilePath.substring(0, videoFilePath.lastIndexOf('\\') + 1) : '';
-                const fileName = videoFilePath.split(/[\\/]/).pop();
-                const base = fileName.includes('.') ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
-                const ext = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')) : '.mp4';
+                const fileNamePart = videoFilePath.split(/[\\/]/).pop();
+                const base = fileNamePart.includes('.') ? fileNamePart.substring(0, fileNamePart.lastIndexOf('.')) : fileNamePart;
+                const ext = fileNamePart.includes('.') ? fileNamePart.substring(fileNamePart.lastIndexOf('.')) : '.mp4';
                 const isWin = videoFilePath.includes('\\');
                 const sep = isWin ? ' & ' : ' && ';
                 const cmds = [];
@@ -510,11 +555,21 @@
                     clips.forEach(clip => {
                         const name = clip.name.replace(/\s+/g, '_');
                         const out = `${dir}${base}_${name}${ext}`;
+                        const duration = (clip.end - clip.start).toFixed(2);
+                        
                         if (captureScreenshot) {
                             const png = `${dir}${base}_${name}.png`;
-                            cmds.push(`ffmpeg -i "${videoFilePath}" -ss ${clip.start.toFixed(2)} -frames:v 1 "${png}"`);
+                            cmds.push(`ffmpeg -ss ${clip.start.toFixed(2)} -i "${videoFilePath}" -frames:v 1 "${png}"`);
                         }
-                        cmds.push(`ffmpeg -i "${videoFilePath}" -ss ${clip.start.toFixed(2)} -t ${(clip.end - clip.start).toFixed(2)} -c copy "${out}"`);
+                        
+                        if (encodingMode === 'reencode') {
+                            // Re-encode mode: -ss before -i for fast seeking, then re-encode for clean cuts
+                            // Using CRF 18 for high quality, preset medium for balance of speed/quality
+                            cmds.push(`ffmpeg -ss ${clip.start.toFixed(2)} -i "${videoFilePath}" -t ${duration} -c:v libx264 -crf 18 -preset medium -c:a aac -b:a 192k "${out}"`);
+                        } else {
+                            // Stream copy mode (fast but may have frozen frames)
+                            cmds.push(`ffmpeg -ss ${clip.start.toFixed(2)} -i "${videoFilePath}" -t ${duration} -c copy -avoid_negative_ts make_zero "${out}"`);
+                        }
                     });
                 } else {
                     const out = `${dir}${base}_full${ext}`;
@@ -522,7 +577,8 @@
                 }
 
                 const fullCmd = cmds.join(sep);
-                displayCommands(fullCmd, `Output: ${clips.length} clip(s)${captureScreenshot ? ' + PNG' : ''}`);
+                const modeLabel = encodingMode === 'reencode' ? 'Re-encoded' : 'Stream Copy';
+                displayCommands(fullCmd, `Output: ${clips.length} clip(s) [${modeLabel}]${captureScreenshot ? ' + PNG' : ''}`);
             }
 
             function generateAudioCommand() {
